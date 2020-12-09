@@ -197,7 +197,8 @@ bool NimBLEClient::connect(const NimBLEAddress &address, bool deleteAttibutes) {
         rc = ble_gap_connect(BLE_OWN_ADDR_PUBLIC, &peerAddrt, m_connectTimeout, &m_pConnParams,
                             NimBLEClient::handleGapEvent, this);
         if(rc == BLE_HS_EBUSY) {
-            vTaskDelay(1 / portTICK_PERIOD_MS);
+            vTaskDelay(1);
+            // vTaskDelay(1 / portTICK_PERIOD_MS);
         }
     }while(rc == BLE_HS_EBUSY);
 
@@ -273,7 +274,12 @@ int NimBLEClient::disconnect(uint8_t reason) {
         if(rc != 0){
             NIMBLE_LOGE(LOG_TAG, "ble_gap_terminate failed: rc=%d %s", rc,
                                     NimBLEUtils::returnCodeToString(rc));
+        } else {
+            NIMBLE_LOGD(LOG_TAG, "ble_gap_terminate success: rc=%d %s", rc,
+                                    NimBLEUtils::returnCodeToString(rc));
         }
+    } else {
+        NIMBLE_LOGD(LOG_TAG, "disconnect() - was not connnected");
     }
 
     NIMBLE_LOGD(LOG_TAG, "<< disconnect()");

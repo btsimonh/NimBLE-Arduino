@@ -160,31 +160,34 @@ void NimBLEDevice::stopAdvertising() {
  * Checks if it is connected or trying to connect and disconnects/stops it first.
  * @param [in] pClient A pointer to the client object.
  */
-/* STATIC */ bool NimBLEDevice::deleteClient(NimBLEClient* pClient) {
+/* STATIC */ bool NimBLEDevice::deleteClient(NimBLEClient* pClient, bool force) {
     if(pClient == nullptr) {
         return false;
     }
 
-    int rc =0;
 
-    if(pClient->m_isConnected) {
-        rc = pClient->disconnect();
-        if (rc != 0 && rc != BLE_HS_EALREADY && rc != BLE_HS_ENOTCONN) {
-            return false;
+    if (!force){
+        int rc =0;
+    
+        if(pClient->m_isConnected) {
+            rc = pClient->disconnect();
+            if (rc != 0 && rc != BLE_HS_EALREADY && rc != BLE_HS_ENOTCONN) {
+                return false;
+            }
+    
+            while(pClient->m_isConnected) {
+                vTaskDelay(10);
+            }
         }
-
-        while(pClient->m_isConnected) {
-            vTaskDelay(10);
-        }
-    }
-
-    if(pClient->m_waitingToConnect) {
-        rc = ble_gap_conn_cancel();
-        if (rc != 0 && rc != BLE_HS_EALREADY) {
-            return false;
-        }
-        while(pClient->m_waitingToConnect) {
-            vTaskDelay(10);
+    
+        if(pClient->m_waitingToConnect) {
+            rc = ble_gap_conn_cancel();
+            if (rc != 0 && rc != BLE_HS_EALREADY) {
+                return false;
+            }
+            while(pClient->m_waitingToConnect) {
+                vTaskDelay(10);
+            }
         }
     }
 
@@ -394,6 +397,15 @@ void NimBLEDevice::stopAdvertising() {
 
 
 /**
+ * @brief Cause a Host reset.
+ * @param [in] reason which will appear as the reaons in onReset.
+ */
+/* STATIC */  void NimBLEDevice::reset(int reason)
+{
+  ble_hs_sched_reset(reason);
+}
+
+/**
  * @brief Host reset, we pass the message so we don't make calls until resynced.
  * @param [in] reason The reason code for the reset.
  */
@@ -532,7 +544,8 @@ void NimBLEDevice::stopAdvertising() {
     }
     // Wait for host and controller to sync before returning and accepting new tasks
     while(!m_synced){
-        vTaskDelay(1 / portTICK_PERIOD_MS);
+        // SH vTaskDelay(1 / portTICK_PERIOD_MS);
+        vTaskDelay(1);
     }
 
     initialized = true; // Set the initialization flag to ensure we are only initialized once.

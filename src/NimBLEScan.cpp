@@ -296,7 +296,8 @@ bool NimBLEScan::start(uint32_t duration, void (*scanCompleteCB)(NimBLEScanResul
         rc = ble_gap_disc(m_own_addr_type, duration, &m_scan_params,
                                     NimBLEScan::handleGapEvent, this);
         if(rc == BLE_HS_EBUSY) {
-            vTaskDelay(1 / portTICK_PERIOD_MS);
+            vTaskDelay(1); 
+            // SH vTaskDelay(1 / portTICK_PERIOD_MS);
         }
     } while(rc == BLE_HS_EBUSY);
 
