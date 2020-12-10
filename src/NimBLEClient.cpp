@@ -189,6 +189,8 @@ bool NimBLEClient::connect(const NimBLEAddress &address, bool deleteAttibutes) {
 
     int rc = 0;
 
+    m_waitingToConnect = true;
+
     /* Try to connect the the advertiser.  Allow 30 seconds (30000 ms) for
      *  timeout (default value of m_connectTimeout).
      *  Loop on BLE_HS_EBUSY if the scan hasn't stopped yet.
@@ -212,12 +214,11 @@ bool NimBLEClient::connect(const NimBLEAddress &address, bool deleteAttibutes) {
         return false;
     }
 
-    m_waitingToConnect = true;
-
     // Wait for the connection to complete.
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
     if(taskData.rc != 0){
+        NIMBLE_LOGD(LOG_TAG, "connect() abort - taskData.rc %d", taskData.rc);
         return false;
     }
 
@@ -696,11 +697,15 @@ uint16_t NimBLEClient::getMTU() {
     switch(event->type) {
 
         case BLE_GAP_EVENT_DISCONNECT: {
-            if(!client->m_isConnected)
+            if(!client->m_isConnected){
+                NIMBLE_LOGE(LOG_TAG, "BLE_GAP_EVENT_DISCONNECT but not expecting it.");
                 return 0;
+            }
 
-            if(client->m_conn_id != event->disconnect.conn.conn_handle)
+            if(client->m_conn_id != event->disconnect.conn.conn_handle){
+                NIMBLE_LOGE(LOG_TAG, "BLE_GAP_EVENT_DISCONNECT wrong connection id.");
                 return 0;
+            }
 
             client->m_isConnected = false;
             client->m_waitingToConnect=false;
@@ -732,8 +737,15 @@ uint16_t NimBLEClient::getMTU() {
 
         case BLE_GAP_EVENT_CONNECT: {
 
-            if(!client->m_waitingToConnect)
-                return 0;
+            if(!client->m_waitingToConnect){
+                NIMBLE_LOGE(LOG_TAG, "BLE_GAP_EVENT_CONNECT but not expecting it.");
+                rc = -1;
+                break;
+
+                // don't risk leaving us stuck in a mutex
+                // if we did not ask for this, then m_pTaskData will not be set?
+                // return 0;
+            }
 
             //if(client->m_conn_id != BLE_HS_CONN_HANDLE_NONE)
             //  return 0;
@@ -766,12 +778,16 @@ uint16_t NimBLEClient::getMTU() {
                 rc = event->connect.status;
                 break;
             }
+
+            // ???? this will skip the release of the task mutex - in order to wait for the MTU return... 
             return 0;
         } // BLE_GAP_EVENT_CONNECT
 
         case BLE_GAP_EVENT_NOTIFY_RX: {
-            if(client->m_conn_id != event->notify_rx.conn_handle)
+            if(client->m_conn_id != event->notify_rx.conn_handle){
+                NIMBLE_LOGE(LOG_TAG, "Notify Recieved - not our connection");
                 return 0;
+            }
 
             NIMBLE_LOGD(LOG_TAG, "Notify Recieved for handle: %d",event->notify_rx.attr_handle);
 
@@ -808,6 +824,8 @@ uint16_t NimBLEClient::getMTU() {
                                                             !event->notify_rx.indication);
                     }
                     break;
+                } else {
+                    NIMBLE_LOGD(LOG_TAG, "Notification characteristic not found");
                 }
             }
 
@@ -817,6 +835,7 @@ uint16_t NimBLEClient::getMTU() {
         case BLE_GAP_EVENT_CONN_UPDATE_REQ:
         case BLE_GAP_EVENT_L2CAP_UPDATE_REQ: {
             if(client->m_conn_id != event->conn_update_req.conn_handle){
+                NIMBLE_LOGE(LOG_TAG, "Upd req - not our connection");
                 return 0;
             }
             NIMBLE_LOGD(LOG_TAG, "Peer requesting to update connection parameters");
@@ -843,6 +862,7 @@ uint16_t NimBLEClient::getMTU() {
 
         case BLE_GAP_EVENT_CONN_UPDATE: {
             if(client->m_conn_id != event->conn_update.conn_handle){
+                NIMBLE_LOGE(LOG_TAG, "Upd - not our connection");
                 return 0;
             }
             if(event->conn_update.status == 0) {
@@ -855,6 +875,7 @@ uint16_t NimBLEClient::getMTU() {
 
         case BLE_GAP_EVENT_ENC_CHANGE: {
             if(client->m_conn_id != event->enc_change.conn_handle){
+                NIMBLE_LOGE(LOG_TAG, "Enc - not our connection");
                 return 0;
             }
 
@@ -879,6 +900,7 @@ uint16_t NimBLEClient::getMTU() {
 
         case BLE_GAP_EVENT_MTU: {
             if(client->m_conn_id != event->mtu.conn_handle){
+                NIMBLE_LOGE(LOG_TAG, "Mtu - not our connection");
                 return 0;
             }
             NIMBLE_LOGI(LOG_TAG, "mtu update event; conn_handle=%d mtu=%d",
@@ -891,8 +913,10 @@ uint16_t NimBLEClient::getMTU() {
         case BLE_GAP_EVENT_PASSKEY_ACTION: {
             struct ble_sm_io pkey = {0,0};
 
-            if(client->m_conn_id != event->passkey.conn_handle)
+            if(client->m_conn_id != event->passkey.conn_handle){
+                NIMBLE_LOGE(LOG_TAG, "Pkey - not our connection");
                 return 0;
+            }
 
             if (event->passkey.params.action == BLE_SM_IOACT_DISP) {
                 pkey.action = event->passkey.params.action;
